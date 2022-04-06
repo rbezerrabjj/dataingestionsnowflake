@@ -1,0 +1,66 @@
+import shlex
+import subprocess
+import json
+
+def call_curl(curl):
+    args = shlex.split(curl)
+    process = subprocess.Popen(args, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    return json.loads(stdout.decode('utf-8'))
+
+curl = ''' curl -X POST -H "Content-Type: app/x-www-form-urlencoded;charset=UTF-8"
+       -H "Authorization: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=="
+       --data-urlencode "username=user"
+       --data-urlencode "password=password"
+       --data-urlencode "grant_type=password"
+       --data-urlencode "scope=sess:rol-any off_access"
+       "https://oauth2/asvgsvsr0nfkL4x7/v1/tk" '''
+
+output = call_curl(curl)
+
+tk_filter = output
+
+token = (tk_filter['access_token'])
+
+import pyspark
+import os
+
+from pyspark.sql import SparkSession
+spark = SparkSession.builder\
+    .master("local[1]")\
+    .appName('Pyspark conn Snowflake.com')\
+    .getOrCreate()
+
+sfOptions = {
+ 'sfURL': os.environ.get("SNOWFLAKE_URL", "dsvsvf477.us-east-1.snowflakecomputing.com"),
+    'sfUser': os.environ.get("SNOWFLAKE_USER", "user"),
+    'sfAuthenticator': os.environ.get("SNOWFLAKE_PASSWORD", "oauth"),
+    #"pem_private_key": os.environ.get("token", token),
+    'sfToken': os.environ.get("token", token),
+    'sfDatabase': os.environ.get("Database", 'DB'),
+    'sfSchema': os.environ.get("SNOWFLAKE_SCHEMA", "SANDBOX"),
+    'sfWarehouse': os.environ.get("SNOWFLAKE_WAREHOUSE", "WH"),
+    'sfRole':  os.environ.get("SNOWFLAKE_ROLE", "ENGINEERING")
+}
+
+SNOWFLAKE_SOURCE_NAME = "net.snowflake.spark.snowflake"
+
+df = spark.read\
+    .format(SNOWFLAKE_SOURCE_NAME)\
+    .options(**sfOptions)\
+    .option("query",
+            """
+                select *
+                  from "{db}"."{schema}"."{table}"
+            """)\
+    .load()
+
+df.show(10, truncate=False)
+
+# Append or overwrite
+df.write.format("snowflake")\
+    .options(**sfOptions)\
+    .option("dbtable", "{destiny_table}")\
+    .mode("append")\
+    .save()
+    
